@@ -19,9 +19,21 @@ import java.util.concurrent.Executors;
  */
 public class ServerMain {
 
-    public static final int TCP_PORT = 5000;
+    public static final int DEFAULT_PORT = 5000;
+
+    /** Cong lay tu tham so dong lenh, roi den bien moi truong PORT, cuoi cung la mac dinh. */
+    private static int resolvePort(String[] args) {
+        String v = args.length > 0 ? args[0] : System.getenv("PORT");
+        try {
+            return (v == null || v.isBlank()) ? DEFAULT_PORT : Integer.parseInt(v.trim());
+        } catch (NumberFormatException e) {
+            Log.warn("Cong khong hop le: " + v + " -> dung " + DEFAULT_PORT);
+            return DEFAULT_PORT;
+        }
+    }
 
     public static void main(String[] args) throws IOException {
+        int port = resolvePort(args);
         Database.init();
 
         SessionRegistry registry = new SessionRegistry();
@@ -30,8 +42,8 @@ public class ServerMain {
         // Thread pool co gioi han -> tranh client rac lam server tao vo han thread
         ExecutorService pool = Executors.newFixedThreadPool(200);
 
-        try (ServerSocket serverSocket = new ServerSocket(TCP_PORT)) {
-            Log.info("TCP server dang lang nghe tai cong " + TCP_PORT);
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            Log.info("TCP server dang lang nghe tai cong " + port);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
                 Log.info("Dang tat server...");

@@ -6,13 +6,21 @@ import com.google.gson.JsonObject;
 
 import javax.swing.table.AbstractTableModel;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Model dung chung cho bang don hang o ca man khach lan man tai xe. */
 public class OrderTableModel extends AbstractTableModel {
 
-    private static final String[] COLS = {"Ma", "Trang thai", "Diem lay", "Diem giao", "Gia", "Tai xe"};
+    public static final int COL_ID = 0, COL_STATUS = 1, COL_PICKUP = 2,
+                            COL_DROPOFF = 3, COL_PRICE = 4, COL_DRIVER = 5;
+
+    private static final String[] COLS = {"Mã", "Trạng thái", "Điểm lấy", "Điểm giao", "Giá", "Tài xế"};
+
     private final List<JsonObject> rows = new ArrayList<>();
+    /** driverId -> ten, gom nhat tu cac PUSH co kem driverName. */
+    private final Map<Long, String> driverNames = new HashMap<>();
 
     public void setAll(JsonArray arr) {
         rows.clear();
@@ -47,6 +55,30 @@ public class OrderTableModel extends AbstractTableModel {
         return (row < 0 || row >= rows.size()) ? null : rows.get(row);
     }
 
+    /** Vi tri dong cua don, -1 neu khong co trong bang. */
+    public int rowOf(long id) {
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).get("id").getAsLong() == id) return i;
+        }
+        return -1;
+    }
+
+    public JsonObject byId(long id) {
+        int r = rowOf(id);
+        return r < 0 ? null : rows.get(r);
+    }
+
+    public void rememberDriverName(long driverId, String name) {
+        if (name != null && !name.isBlank()) driverNames.put(driverId, name);
+    }
+
+    /** Ten tai xe cua don, hoac null neu don chua co tai xe. */
+    public String driverNameOf(JsonObject order) {
+        if (order == null || !order.has("driverId") || order.get("driverId").isJsonNull()) return null;
+        long id = order.get("driverId").getAsLong();
+        return driverNames.getOrDefault(id, "Tài xế #" + id);
+    }
+
     @Override public int getRowCount() { return rows.size(); }
     @Override public int getColumnCount() { return COLS.length; }
     @Override public String getColumnName(int c) { return COLS[c]; }
@@ -55,12 +87,15 @@ public class OrderTableModel extends AbstractTableModel {
     public Object getValueAt(int r, int c) {
         JsonObject o = rows.get(r);
         switch (c) {
-            case 0: return o.get("id").getAsLong();
-            case 1: return o.get("status").getAsString();
-            case 2: return str(o, "pickupAddr");
-            case 3: return str(o, "dropoffAddr");
-            case 4: return o.get("price").getAsDouble();
-            case 5: return o.has("driverId") ? o.get("driverId").getAsLong() : "-";
+            case COL_ID:      return "#" + o.get("id").getAsLong();
+            case COL_STATUS:  return o.get("status").getAsString();   // StatusRenderer tu doi sang tieng Viet
+            case COL_PICKUP:  return str(o, "pickupAddr");
+            case COL_DROPOFF: return str(o, "dropoffAddr");
+            case COL_PRICE:   return Theme.money(o.get("price").getAsDouble());
+            case COL_DRIVER:  {
+                String n = driverNameOf(o);
+                return n == null ? "—" : n;
+            }
             default: return "";
         }
     }
