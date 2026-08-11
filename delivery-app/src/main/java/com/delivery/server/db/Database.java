@@ -13,9 +13,9 @@ import java.sql.SQLException;
 public final class Database {
 
     private static String url  = System.getenv().getOrDefault("DB_URL",
-            "jdbc:mysql://localhost:3306/delivery_app?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Ho_Chi_Minh");
-    private static String user = System.getenv().getOrDefault("DB_USER", "root");
-    private static String pass = System.getenv().getOrDefault("DB_PASS", "root");
+            "jdbc:postgresql://localhost:5432/delivery_app");
+    private static String user = System.getenv().getOrDefault("DB_USER", "postgres");
+    private static String pass = System.getenv().getOrDefault("DB_PASS", "postgres");
 
     private Database() {}
 

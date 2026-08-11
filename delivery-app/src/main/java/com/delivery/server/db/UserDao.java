@@ -36,7 +36,7 @@ public class UserDao {
             c.setAutoCommit(false);
             try {
                 long id;
-                try (PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+                try (PreparedStatement ps = c.prepareStatement(sql, new String[]{"id"})) {
                     ps.setString(1, u.username);
                     ps.setString(2, u.passwordHash);
                     ps.setString(3, u.fullName);

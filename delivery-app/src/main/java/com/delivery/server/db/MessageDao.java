@@ -11,7 +11,7 @@ public class MessageDao {
     public ChatMessage save(long orderId, long senderId, String content, String type) throws SQLException {
         String sql = "INSERT INTO messages(order_id,sender_id,content,type) VALUES (?,?,?,?)";
         try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = c.prepareStatement(sql, new String[]{"id"})) {
             ps.setLong(1, orderId);
             ps.setLong(2, senderId);
             ps.setString(3, content);

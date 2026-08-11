@@ -13,7 +13,7 @@ public class OrderDao {
         String sql = "INSERT INTO orders(customer_id,pickup_addr,pickup_lat,pickup_lng," +
                 "dropoff_addr,dropoff_lat,dropoff_lng,note,price,status) VALUES (?,?,?,?,?,?,?,?,?, 'PENDING')";
         try (Connection c = Database.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement ps = c.prepareStatement(sql, new String[]{"id"})) {
             ps.setLong(1, o.customerId);
             ps.setString(2, o.pickupAddr);
             ps.setDouble(3, o.pickupLat);
@@ -72,7 +72,7 @@ public class OrderDao {
      * @return true neu gianh duoc don, false neu driver khac da nhan truoc.
      */
     public boolean tryAccept(long orderId, long driverId) throws SQLException {
-        String sql = "UPDATE orders SET driver_id=?, status='ACCEPTED', version=version+1 " +
+        String sql = "UPDATE orders SET driver_id=?, status='ACCEPTED', version=version+1, updated_at=CURRENT_TIMESTAMP " +
                      "WHERE id=? AND status='PENDING' AND driver_id IS NULL";
         try (Connection c = Database.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
@@ -84,7 +84,7 @@ public class OrderDao {
 
     /** Update co dieu kien trang thai cu -> tranh 2 lenh update dam nhau. */
     public boolean updateStatus(long orderId, OrderStatus expected, OrderStatus next) throws SQLException {
-        String sql = "UPDATE orders SET status=?, version=version+1 WHERE id=? AND status=?";
+        String sql = "UPDATE orders SET status=?, version=version+1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?";
         try (Connection c = Database.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setString(1, next.name());
