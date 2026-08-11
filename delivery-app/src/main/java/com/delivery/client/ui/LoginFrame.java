@@ -15,9 +15,7 @@ import java.awt.*;
  */
 public class LoginFrame extends JFrame {
 
-    private final JTextField hostField = Theme.field(10);
-    private final JTextField portField = Theme.field(5);
-    private final JTextField userField = Theme.field(16);
+    private final JTextField userField = Theme.field(18);
     private final JPasswordField passField = Theme.password(16);
     private final JLabel statusLabel = new JLabel(" ");
 
@@ -30,10 +28,6 @@ public class LoginFrame extends JFrame {
 
     public LoginFrame() {
         super("Delivery App — Đăng nhập");
-
-        hostField.setText(Config.host());
-        portField.setText(String.valueOf(Config.port()));
-        userField.setText(Config.lastUsername());
 
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(Theme.BG);
@@ -112,11 +106,6 @@ public class LoginFrame extends JFrame {
         fields.add(Theme.labeledField("TÀI KHOẢN", userField));
         fields.add(Theme.labeledField("MẬT KHẨU", passField));
 
-        JPanel server = Theme.transparent(new BorderLayout(8, 0));
-        server.add(hostField, BorderLayout.CENTER);
-        server.add(portField, BorderLayout.EAST);
-        fields.add(Theme.labeledField("MÁY CHỦ (HOST : PORT)", server));
-
         loginBtn.addActionListener(e -> doLogin());
         regBtn.addActionListener(e -> new RegisterDialog(this).setVisible(true));
         loginBtn.setPreferredSize(new Dimension(0, 38));
@@ -151,16 +140,6 @@ public class LoginFrame extends JFrame {
     // Nghiep vu
     // ------------------------------------------------------------------
 
-    String host() { return hostField.getText().trim(); }
-
-    int port() {
-        try {
-            return Integer.parseInt(portField.getText().trim());
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
-
     private void exitApp() {
         if (pending != null) pending.close();
         dispose();
@@ -176,15 +155,11 @@ public class LoginFrame extends JFrame {
             statusLabel.setText("Nhập đầy đủ tài khoản và mật khẩu");
             return;
         }
-        if (port() <= 0 || port() > 65535) {
-            statusLabel.setText("Cổng không hợp lệ");
-            return;
-        }
         statusLabel.setText("Đang kết nối...");
 
         ClientConnection conn = new ClientConnection();
         try {
-            conn.connect(host(), port());
+            conn.connect(Config.host(), Config.port());
         } catch (Exception ex) {
             statusLabel.setText("Không kết nối được máy chủ: " + ex.getMessage());
             return;
@@ -199,7 +174,8 @@ public class LoginFrame extends JFrame {
                     conn.userId = u.get("id").getAsLong();
                     conn.fullName = u.get("fullName").getAsString();
                     conn.role = u.get("role").getAsString();
-                    Config.saveCredentials(username);    // Lưu user cuối cùng thành công
+                    conn.udpToken = resp.lng("udpToken");
+                    if (resp.getData().has("udpPort")) conn.udpPort = (int) resp.lng("udpPort");
 
                     JFrame next;
                     switch (conn.role) {

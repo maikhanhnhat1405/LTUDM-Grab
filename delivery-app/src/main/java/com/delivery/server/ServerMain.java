@@ -2,6 +2,7 @@ package com.delivery.server;
 
 import com.delivery.common.Log;
 import com.delivery.server.db.Database;
+import com.delivery.server.service.LocationService;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -37,7 +38,14 @@ public class ServerMain {
         Database.init();
 
         SessionRegistry registry = new SessionRegistry();
-        Router router = new Router(registry);
+        ActiveTripRegistry activeTrips = new ActiveTripRegistry();
+        LocationCache locationCache = new LocationCache();
+        Router router = new Router(registry, activeTrips);
+
+        // UDP chay tren cong rieng (5001), thread rieng, doc lap voi TCP
+        LocationService locationService = new LocationService(registry, locationCache, activeTrips);
+        UdpServer udpServer = new UdpServer(locationService);
+        udpServer.start();
 
         // Thread pool co gioi han -> tranh client rac lam server tao vo han thread
         ExecutorService pool = Executors.newFixedThreadPool(200);

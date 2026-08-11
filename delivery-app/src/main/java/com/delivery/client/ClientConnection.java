@@ -42,8 +42,14 @@ public class ClientConnection {
     public long userId;
     public String fullName;
     public String role;
+    public String host;
+    public int port;
+    public long udpToken;      // dùng để ký mỗi gói GPS gửi qua UDP
+    public int udpPort = 5001;
 
     public void connect(String host, int port) throws IOException {
+        this.host = host;
+        this.port = port;
         socket = new Socket();
         socket.connect(new InetSocketAddress(host, port), 5000);
         socket.setTcpNoDelay(true);

@@ -26,9 +26,9 @@ public final class UiKit {
     private UiKit() {}
 
     // ----- kich thuoc co dinh cua tung man hinh (pixel logic) -----
-    public static final Dimension LOGIN    = new Dimension(880, 520);
-    public static final Dimension REGISTER = new Dimension(460, 540);
-    public static final Dimension MAIN     = new Dimension(1180, 740);
+    public static final Dimension LOGIN    = new Dimension(860, 520);
+    public static final Dimension REGISTER = new Dimension(480, 580);
+    public static final Dimension MAIN     = new Dimension(1100, 700);
 
     /** Be ngang cot chat nam ben phai man hinh chinh. */
     public static final int CHAT_WIDTH = 400;

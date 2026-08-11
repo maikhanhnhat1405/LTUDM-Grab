@@ -105,3 +105,79 @@ Cách này vẫn đúng kể cả khi sau này chạy nhiều instance server.
 - Còn giữ `db/schema.sql` bản MySQL nếu cần đổi hệ quản trị.
 - `SessionRegistry` → nơi gắn cache "driver đang online" và bộ đẩy vị trí GPS.
 - `PING`/`PONG` đã có sẵn trong protocol → heartbeat & reconnect.
+
+
+---
+
+# Level 2 — phần 1: GPS realtime qua UDP
+
+## Gói tin UDP (45 byte, nhị phân cố định)
+
+```
+byte 0      version   (1)
+byte 1-8    driverId  (long)
+byte 9-16   token     (long)   ← server cấp lúc login qua TCP
+byte 17-24  timestamp (long)
+byte 25-32  lat       (double)
+byte 33-40  lng       (double)
+byte 41-44  seq       (int)
+```
+
+Không dùng JSON như bên TCP: mỗi tài xế bắn 1 gói/2 giây, JSON tốn băng thông
+gấp ~4 lần và phải parse text. Gói cố định kích thước nên đọc thẳng bằng
+`ByteBuffer`, và **không cần framing** — UDP là datagram, mỗi gói đã là một đơn
+vị trọn vẹn, khác hẳn TCP stream.
+
+## Đường đi của dữ liệu
+
+```
+Driver ──UDP:5001──> UdpServer ──> LocationService ──> LocationCache (RAM)
+                                          │
+                                          ├─ ActiveTripRegistry: driverId → (orderId, customerId)
+                                          │
+                                          └──TCP:5000 push──> Customer
+```
+
+## Ba cửa ải mỗi gói phải qua (`LocationService.onPacket`)
+
+**1. Xác thực token.** UDP không có kết nối — ai cũng gửi được gói giả mạo
+`driverId` bất kỳ tới cổng 5001. Server cấp token ngẫu nhiên lúc đăng nhập qua
+TCP (kênh đã xác thực), tài xế nhét vào mỗi gói UDP. Sai token thì **bỏ im
+lặng**, không trả lời — trả lời là mở đường cho tấn công khuếch đại.
+
+**2. Kiểm tra `seq`.** UDP không đảm bảo thứ tự. Gói gửi lúc 10:00:00 có thể
+tới sau gói 10:00:02. Ghi đè mù thì chấm tài xế nhảy giật lùi.
+
+**3. Có chuyến đang chạy không.** `ActiveTripRegistry` trả lời ngay trong RAM.
+Query DB cho từng gói thì 100 tài xế = 50 query/giây chỉ để hỏi một câu không
+bao giờ đổi.
+
+## Vì sao chiều về lại là TCP
+
+Driver → server dùng UDP: mất gói không sao, 2 giây sau có gói mới, cần độ trễ
+thấp hơn là độ tin cậy. Server → customer **bắt buộc TCP**: khách đang nhìn xe
+chạy, mất gói là màn hình đứng. Hệ thống dùng đúng giao thức cho đặc tính của
+từng chiều, không phải chọn bừa một cái.
+
+## Vị trí không ghi database
+
+100 tài xế × 1 gói/2 giây = 4,3 triệu bản ghi/ngày, trong khi chỉ bản ghi **mới
+nhất** có giá trị. `LocationCache` giữ trong RAM. Cần lưu vết hành trình thì ghi
+mẫu thưa (30 giây/lần) vào bảng riêng.
+
+## Giao diện
+
+Giữ nguyên toàn bộ giao diện cũ (`Theme`, `UiKit`, `HeaderBar`, `ChatPanel`).
+Cột phải của màn khách hàng và màn tài xế đổi thành **tab**: tab *Trò chuyện*
+là khung chat cũ y nguyên, thêm tab *Bản đồ*.
+
+- **Khách hàng**: tab Bản đồ có nút *Chọn điểm lấy* / *Chọn điểm giao*, bấm lên
+  bản đồ để đặt toạ độ (sửa luôn lỗi toạ độ bằng 0 ở Level 1). Chọn đơn nào
+  trong bảng thì bản đồ vẽ lộ trình đơn đó và chấm tài xế chạy realtime.
+- **Tài xế**: nhận đơn là GPS tự bật, chấm bò từ vị trí hiện tại về điểm lấy,
+  tới nơi tự quay đầu về điểm giao. Có ô **Giả lập mất 30% gói** để demo.
+
+`MapPanel` vẽ toạ độ lên lưới thay vì tải tile thật — tách bạch khi debug: chấm
+không nhúc nhích thì lỗi ở đường truyền UDP chứ không phải thư viện bản đồ. Sau
+này thay bằng JXMapViewer2 (`org.jxmapviewer:jxmapviewer2:2.8`, tile
+OpenStreetMap, không cần API key) mà không phải động tới phần mạng.

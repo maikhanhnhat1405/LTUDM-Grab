@@ -10,12 +10,16 @@ import com.delivery.server.db.UserDao;
 import com.delivery.server.model.Role;
 import com.delivery.server.model.User;
 
+import com.delivery.server.UdpServer;
+
+import java.security.SecureRandom;
 import java.sql.SQLException;
 
 public class AuthService {
 
     private final UserDao userDao = new UserDao();
     private final SessionRegistry registry;
+    private final SecureRandom random = new SecureRandom();
 
     public AuthService(SessionRegistry registry) { this.registry = registry; }
 
@@ -66,10 +70,15 @@ public class AuthService {
                         "Sai tai khoan hoac mat khau"));
                 return;
             }
-            s.authenticate(u.id, u.fullName, u.role);
+            // Token di kem moi goi UDP. Cap qua TCP (kenh da xac thuc) roi dung
+            // o UDP (kenh khong xac thuc duoc) - ghep uu diem cua ca hai giao thuc.
+            long udpToken = random.nextLong();
+            s.authenticate(u.id, u.fullName, u.role, udpToken);
             registry.register(s);
             Log.info("Dang nhap: " + s.describe() + " | online=" + registry.onlineCount());
-            s.send(Message.ok(req.getRequestId()).put("user", u.toJson()));
+            s.send(Message.ok(req.getRequestId()).put("user", u.toJson())
+                    .put("udpToken", udpToken)
+                    .put("udpPort", UdpServer.UDP_PORT));
 
         } catch (SQLException e) {
             Log.error("login", e);

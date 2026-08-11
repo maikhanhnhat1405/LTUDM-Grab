@@ -38,6 +38,7 @@ public final class MessageType {
     public static final String PUSH_NEW_ORDER      = "PUSH_NEW_ORDER";      // -> tat ca driver online
     public static final String PUSH_ORDER_TAKEN    = "PUSH_ORDER_TAKEN";    // -> driver khac: don da bi nhan
     public static final String PUSH_ORDER_STATUS   = "PUSH_ORDER_STATUS";   // -> doi phuong trong don
+    public static final String PUSH_DRIVER_LOCATION = "PUSH_DRIVER_LOCATION"; // -> khach: vi tri tai xe (nguon UDP)
     public static final String PUSH_CHAT_MESSAGE   = "PUSH_CHAT_MESSAGE";   // -> nguoi con lai trong don
     public static final String PONG                = "PONG";
 

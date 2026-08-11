@@ -10,48 +10,48 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 
 /**
- * Man hinh tai xe.
+ * Màn hình tài xế - card-based UI.
  *
- * Cot trai: don dang cho (nhan don) va don cua toi (day trang thai).
- * Cot phai: khung chat nhung san, bam theo don dang chon o bang "Đơn của tôi".
- * Cac nut trang thai tu bat/tat theo dung state machine cua don, tai xe khong
- * con bam bua roi cho server tra loi loi nua.
+ * Layout:
+ * - Top: Header bar
+ * - Center: 2 hàng
+ *   - Hàng 1: Danh sách đơn chờ (trái) + Danh sách đơn của tôi (phải)
+ *   - Hàng 2: Chi tiết đơn đã chọn + Nút hành động
+ * - Bottom: Log
  */
 public class DriverFrame extends JFrame {
 
     private final ClientConnection conn;
+    private final OrderListPanel pendingList;
+    private final OrderListPanel myList;
+    private final OrderDetailPanel orderDetail;
+    private final HeaderBar header;
 
-    private final OrderTableModel pendingModel = new OrderTableModel();
-    private final OrderTableModel myModel = new OrderTableModel();
-    private final JTable pendingTable = new JTable(pendingModel);
-    private final JTable myTable = new JTable(myModel);
-    private final JTextArea logArea = new JTextArea(4, 20);
-
+    private final JTextArea logArea = new JTextArea(2, 20);
     private final JButton acceptBtn = Theme.primary("Nhận đơn");
-    private final JButton pickedBtn = Theme.ghost("Đã lấy hàng");
+    private final JButton pickedBtn = Theme.ghost("Đã lấy");
     private final JButton deliverBtn = Theme.ghost("Đang giao");
     private final JButton doneBtn = Theme.primary("Hoàn thành");
-
-    private final ChatPanel chat;
-    private final HeaderBar header;
+    private final JButton chatBtn = Theme.ghost("💬 Chat");
 
     public DriverFrame(ClientConnection conn) {
         super("Delivery App — Tài xế · " + conn.fullName);
         this.conn = conn;
-        this.chat = new ChatPanel(conn);
+
+        this.pendingList = new OrderListPanel(o -> {});
+        this.myList = new OrderListPanel(this::onOrderSelected);
+        this.orderDetail = new OrderDetailPanel(null);
         this.header = new HeaderBar("Nhận đơn và cập nhật hành trình", conn.fullName, "Tài xế", this::exitApp);
 
         JPanel root = new JPanel(new BorderLayout());
         root.setBackground(Theme.BG);
         root.add(header, BorderLayout.NORTH);
 
-        JPanel body = Theme.transparent(new BorderLayout(14, 0));
-        body.setBorder(new EmptyBorder(14, 16, 16, 16));
-        body.add(buildLeft(), BorderLayout.CENTER);
-
-        JPanel chatCard = Theme.card("Trò chuyện với khách", chat);
-        chatCard.setPreferredSize(new Dimension(UiKit.CHAT_WIDTH, 0));
-        body.add(chatCard, BorderLayout.EAST);
+        JPanel body = Theme.transparent(new BorderLayout(0, 12));
+        body.setBorder(new EmptyBorder(12, 14, 14, 14));
+        body.add(buildListsSection(), BorderLayout.NORTH);
+        body.add(buildDetailSection(), BorderLayout.CENTER);
+        body.add(buildLogSection(), BorderLayout.SOUTH);
 
         root.add(body, BorderLayout.CENTER);
         setContentPane(root);
@@ -69,109 +69,125 @@ public class DriverFrame extends JFrame {
     }
 
     // ------------------------------------------------------------------
-    // Dung giao dien
+    // Layout
     // ------------------------------------------------------------------
 
-    private JComponent buildLeft() {
-        JPanel tables = Theme.transparent(new GridLayout(2, 1, 0, 14));
-        tables.add(Theme.card("Đơn đang chờ", buildPending()));
-        tables.add(Theme.card("Đơn của tôi", buildMine()));
-
-        JPanel col = Theme.transparent(new BorderLayout(0, 14));
-        col.add(tables, BorderLayout.CENTER);
-        col.add(Theme.card("Nhật ký hoạt động", buildLog()), BorderLayout.SOUTH);
-        return col;
-    }
-
-    private JComponent buildPending() {
-        prepare(pendingTable, 60, 110, 200, 200, 110, 0);
-        pendingTable.getColumnModel().removeColumn(
-                pendingTable.getColumnModel().getColumn(OrderTableModel.COL_DRIVER));  // don cho thi chua co tai xe
-
-        pendingTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                acceptBtn.setEnabled(pendingModel.at(pendingTable.getSelectedRow()) != null);
-            }
-        });
-        acceptBtn.setEnabled(false);
+    private JComponent buildListsSection() {
         acceptBtn.addActionListener(e -> acceptOrder());
+        acceptBtn.setEnabled(false);
 
-        JButton reload = Theme.ghost("Làm mới");
-        reload.addActionListener(e -> loadPending());
+        JPanel pendingActions = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 0, 6));
+        pendingActions.add(acceptBtn);
 
-        JPanel actions = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
-        actions.add(reload);
-        actions.add(acceptBtn);
+        JPanel pending = new JPanel(new BorderLayout(0, 8));
+        pending.setOpaque(false);
+        pending.add(pendingList, BorderLayout.CENTER);
+        pending.add(pendingActions, BorderLayout.SOUTH);
 
-        JPanel p = Theme.transparent(new BorderLayout(0, 10));
-        p.add(Theme.scroll(pendingTable), BorderLayout.CENTER);
-        p.add(actions, BorderLayout.SOUTH);
-        return p;
+        pendingList.addListSelectionListener(e -> {
+            acceptBtn.setEnabled(pendingList.getSelected() != null);
+        });
+
+        JPanel left = Theme.card("📋 Đơn đang chờ", pending);
+        left.setPreferredSize(new Dimension(380, 0));
+
+        myList.addListSelectionListener(e -> {
+            JsonObject o = myList.getSelected();
+            if (o != null) onOrderSelected(o);
+            syncStatusButtons();
+        });
+
+        JPanel right = Theme.card("🚗 Đơn của tôi", myList);
+
+        JPanel split = Theme.transparent(new BorderLayout(10, 0));
+        split.add(left, BorderLayout.WEST);
+        split.add(right, BorderLayout.CENTER);
+        split.setPreferredSize(new Dimension(0, 180));
+        return split;
     }
 
-    private JComponent buildMine() {
-        prepare(myTable, 60, 110, 200, 200, 110, 0);
-        myTable.getColumnModel().removeColumn(
-                myTable.getColumnModel().getColumn(OrderTableModel.COL_DRIVER));       // tai xe chinh la minh
-
-        myTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) syncSelection();
-        });
+    private JComponent buildDetailSection() {
+        JPanel left = Theme.card("Chi tiết đơn", orderDetail);
 
         pickedBtn.addActionListener(e -> updateStatus("PICKED_UP"));
         deliverBtn.addActionListener(e -> updateStatus("DELIVERING"));
         doneBtn.addActionListener(e -> updateStatus("COMPLETED"));
-        syncSelection();
+        chatBtn.addActionListener(e -> openChat());
+        syncStatusButtons();
 
-        JPanel actions = Theme.transparent(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+        JPanel actions = Theme.transparent(new FlowLayout(FlowLayout.CENTER, 8, 0));
+        actions.add(chatBtn);
         actions.add(pickedBtn);
         actions.add(deliverBtn);
         actions.add(doneBtn);
 
-        JPanel p = Theme.transparent(new BorderLayout(0, 10));
-        p.add(Theme.scroll(myTable), BorderLayout.CENTER);
-        p.add(actions, BorderLayout.SOUTH);
-        return p;
+        JPanel right = new JPanel(new BorderLayout(0, 8));
+        right.setOpaque(false);
+        right.add(actions, BorderLayout.CENTER);
+
+        JPanel split = Theme.transparent(new BorderLayout(10, 0));
+        split.add(left, BorderLayout.CENTER);
+        split.add(right, BorderLayout.EAST);
+        return split;
     }
 
-    private void prepare(JTable t, int... widths) {
-        Theme.styleTable(t);
-        t.getColumnModel().getColumn(OrderTableModel.COL_STATUS)
-         .setCellRenderer(new Theme.StatusRenderer());
-        for (int i = 0; i < widths.length && i < t.getColumnCount(); i++) {
-            if (widths[i] > 0) t.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
-        }
-    }
-
-    private JComponent buildLog() {
+    private JComponent buildLogSection() {
         logArea.setEditable(false);
         logArea.setFont(Theme.SMALL);
         logArea.setForeground(Theme.MUTED);
         logArea.setBackground(Theme.CARD);
         logArea.setBorder(new EmptyBorder(6, 8, 6, 8));
-        JScrollPane sp = Theme.scroll(logArea);
-        sp.setPreferredSize(new Dimension(0, 66));
-        return sp;
+        JScrollPane logScroll = Theme.scroll(logArea);
+        logScroll.setPreferredSize(new Dimension(0, 50));
+        return Theme.card("Nhật ký", logScroll);
     }
 
     // ------------------------------------------------------------------
-    // Nghiep vu
+    // Nghiệp vụ
     // ------------------------------------------------------------------
 
-    /** Bat/tat nut theo dung state machine + doi khung chat sang don dang chon. */
-    private void syncSelection() {
-        JsonObject o = myModel.at(myTable.getSelectedRow());
+    private void syncStatusButtons() {
+        JsonObject o = myList.getSelected();
         String status = o == null ? null : o.get("status").getAsString();
-
         pickedBtn.setEnabled("ACCEPTED".equals(status));
         deliverBtn.setEnabled("PICKED_UP".equals(status));
         doneBtn.setEnabled("DELIVERING".equals(status));
+    }
 
-        chat.showOrder(o, o == null ? null : "Khách hàng #" + o.get("customerId").getAsLong());
+    private void onOrderSelected(JsonObject order) {
+        orderDetail.showOrder(order, "Khách #" + order.get("customerId").getAsLong(), doneBtn, deliverBtn, pickedBtn);
+    }
+
+    private void openChat() {
+        JsonObject o = myList.getSelected();
+        if (o == null) {
+            log("Chọn một đơn trước đã");
+            return;
+        }
+        ChatDialog.open(this, conn, o.get("id").getAsLong());
+    }
+
+    private void acceptOrder() {
+        JsonObject o = pendingList.getSelected();
+        if (o == null) return;
+        long id = o.get("id").getAsLong();
+
+        conn.request(Message.request(MessageType.ORDER_ACCEPT).put("orderId", id),
+                resp -> {
+                    JsonObject order = resp.getData().getAsJsonObject("order");
+                    pendingList.removeById(id);
+                    myList.upsert(order);
+                    onOrderSelected(order);
+                    log("✓ Đã nhận đơn #" + id);
+                },
+                err -> {
+                    pendingList.removeById(id);
+                    log("✗ Không nhận được đơn #" + id + ": " + err.str("message"));
+                });
     }
 
     private void updateStatus(String status) {
-        JsonObject o = myModel.at(myTable.getSelectedRow());
+        JsonObject o = myList.getSelected();
         if (o == null) return;
         long id = o.get("id").getAsLong();
 
@@ -179,86 +195,57 @@ public class DriverFrame extends JFrame {
                         .put("orderId", id)
                         .put("status", status),
                 resp -> {
-                    myModel.upsert(resp.getData().getAsJsonObject("order"));
-                    syncSelection();
-                    log("Đơn #" + id + " → " + Theme.statusLabel(status));
+                    myList.upsert(resp.getData().getAsJsonObject("order"));
+                    onOrderSelected(myList.getSelected());
+                    log("→ Đơn #" + id + " " + Theme.statusLabel(status));
                 },
-                err -> log("Không đổi được trạng thái: " + err.str("message")));
-    }
-
-    private void acceptOrder() {
-        JsonObject o = pendingModel.at(pendingTable.getSelectedRow());
-        if (o == null) return;
-        long orderId = o.get("id").getAsLong();
-
-        conn.request(Message.request(MessageType.ORDER_ACCEPT).put("orderId", orderId),
-                resp -> {
-                    JsonObject order = resp.getData().getAsJsonObject("order");
-                    pendingModel.removeById(orderId);
-                    myModel.upsert(order);
-                    select(myTable, myModel, orderId);
-                    log("Đã nhận đơn #" + orderId);
-                },
-                err -> {
-                    // Truong hop kinh dien: 2 tai xe bam cung luc, ta la nguoi thua
-                    pendingModel.removeById(orderId);
-                    log("Không nhận được đơn #" + orderId + ": " + err.str("message"));
-                });
-    }
-
-    private void select(JTable t, OrderTableModel m, long orderId) {
-        int row = m.rowOf(orderId);
-        if (row >= 0) t.setRowSelectionInterval(row, row);
+                err -> log("✗ Không đổi được trạng thái: " + err.str("message")));
     }
 
     private void loadPending() {
         conn.request(Message.request(MessageType.ORDER_LIST_PENDING),
-                resp -> pendingModel.setAll(resp.getData().getAsJsonArray("orders")),
-                err -> log("Lỗi tải đơn chờ: " + err.str("message")));
+                resp -> pendingList.setAll(resp.getData().getAsJsonArray("orders")),
+                err -> log("✗ Lỗi tải đơn chờ: " + err.str("message")));
     }
 
     private void loadMine() {
         conn.request(Message.request(MessageType.ORDER_LIST_MINE),
-                resp -> {
-                    myModel.setAll(resp.getData().getAsJsonArray("orders"));
-                    if (myModel.getRowCount() > 0 && myTable.getSelectedRow() < 0) {
-                        myTable.setRowSelectionInterval(0, 0);
-                    }
-                },
-                err -> log("Lỗi tải đơn của tôi: " + err.str("message")));
+                resp -> myList.setAll(resp.getData().getAsJsonArray("orders")),
+                err -> log("✗ Lỗi tải đơn của tôi: " + err.str("message")));
     }
 
     private void onPush(Message push) {
         switch (push.getType()) {
             case MessageType.PUSH_NEW_ORDER: {
                 JsonObject o = push.getData().getAsJsonObject("order");
-                pendingModel.upsert(o);
-                log("CÓ ĐƠN MỚI #" + o.get("id").getAsLong() + ": " +
-                        o.get("pickupAddr").getAsString() + " → " + o.get("dropoffAddr").getAsString());
+                pendingList.upsert(o);
+                log("🔔 CÓ ĐƠN MỚI: " + o.get("pickupAddr").getAsString() + " → " + o.get("dropoffAddr").getAsString());
                 break;
             }
             case MessageType.PUSH_ORDER_TAKEN: {
                 long id = push.lng("orderId");
-                pendingModel.removeById(id);
-                log("Đơn #" + id + " đã có tài xế khác nhận");
+                pendingList.removeById(id);
+                log("⚠ Đơn #" + id + " đã có người nhận");
                 break;
             }
             case MessageType.PUSH_ORDER_STATUS: {
                 JsonObject o = push.getData().getAsJsonObject("order");
-                myModel.upsert(o);
-                if (chat.currentOrderId() == o.get("id").getAsLong()) syncSelection();
-                log("Đơn #" + o.get("id").getAsLong() + " → " + Theme.statusLabel(o.get("status").getAsString()));
+                myList.upsert(o);
+                if (myList.getSelected() != null && myList.getSelected().get("id").getAsLong() == o.get("id").getAsLong()) {
+                    onOrderSelected(o);
+                }
+                log("→ Đơn #" + o.get("id").getAsLong() + " " + Theme.statusLabel(o.get("status").getAsString()));
                 break;
             }
             case MessageType.PUSH_CHAT_MESSAGE: {
                 JsonObject m = push.getData().getAsJsonObject("message");
-                if (!chat.handlePush(m)) {
-                    log("Tin nhắn mới (đơn #" + m.get("orderId").getAsLong() + "): " + m.get("content").getAsString());
+                if (!ChatDialog.route(m)) {
+                    log("💬 Tin mới (đơn #" + m.get("orderId").getAsLong() + ")");
                 }
                 break;
             }
             default:
-                log("PUSH: " + push.getType());
+                log("? " + push.getType());
         }
     }
 
@@ -269,6 +256,7 @@ public class DriverFrame extends JFrame {
 
     private void exitApp() {
         if (!UiKit.confirm(this, "Thoát ứng dụng?")) return;
+        ChatDialog.closeAll();
         conn.close();
         dispose();
         System.exit(0);

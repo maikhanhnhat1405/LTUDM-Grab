@@ -3,6 +3,7 @@ package com.delivery.server.service;
 import com.delivery.common.Log;
 import com.delivery.common.Message;
 import com.delivery.common.MessageType;
+import com.delivery.server.ActiveTripRegistry;
 import com.delivery.server.ClientSession;
 import com.delivery.server.SessionRegistry;
 import com.delivery.server.db.OrderDao;
@@ -19,7 +20,12 @@ public class OrderService {
     private final OrderDao orderDao = new OrderDao();
     private final SessionRegistry registry;
 
-    public OrderService(SessionRegistry registry) { this.registry = registry; }
+    private final ActiveTripRegistry activeTrips;
+
+    public OrderService(SessionRegistry registry, ActiveTripRegistry activeTrips) {
+        this.registry = registry;
+        this.activeTrips = activeTrips;
+    }
 
     // ---------------- Customer tao don ----------------
     public void create(ClientSession s, Message req) {
@@ -79,6 +85,9 @@ public class OrderService {
                 return;
             }
             Order o = orderDao.findById(orderId);
+            // Bat dau theo doi chuyen: tu gio moi goi GPS cua tai xe nay
+            // se duoc chuyen tiep cho dung khach hang.
+            activeTrips.start(s.userId(), o.id, o.customerId);
             Log.info("Driver " + s.userId() + " nhan don #" + orderId);
 
             s.send(Message.ok(req.getRequestId()).put("order", o.toJson()));
@@ -136,6 +145,10 @@ public class OrderService {
                 return;
             }
             o.status = next;
+            // Chuyen ket thuc -> ngung chuyen tiep GPS cho khach
+            if ((next == OrderStatus.COMPLETED || next == OrderStatus.CANCELLED) && o.driverId != null) {
+                activeTrips.end(o.driverId);
+            }
             Log.info("Don #" + orderId + " -> " + next + " boi user " + s.userId());
 
             s.send(Message.ok(req.getRequestId()).put("order", o.toJson()));

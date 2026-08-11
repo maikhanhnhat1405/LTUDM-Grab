@@ -27,6 +27,8 @@ public class SessionRegistry {
         if (s.isAuthenticated()) byUserId.remove(s.userId(), s);
     }
 
+    public ClientSession get(long userId) { return byUserId.get(userId); }
+
     public boolean isOnline(long userId) { return byUserId.containsKey(userId); }
 
     public int onlineCount() { return byUserId.size(); }

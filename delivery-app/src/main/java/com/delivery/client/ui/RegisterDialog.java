@@ -1,6 +1,7 @@
 package com.delivery.client.ui;
 
 import com.delivery.client.ClientConnection;
+import com.delivery.client.Config;
 import com.delivery.common.Message;
 import com.delivery.common.MessageType;
 
@@ -30,17 +31,27 @@ public class RegisterDialog extends JDialog {
 
         JPanel root = new JPanel(new BorderLayout(0, 14));
         root.setBackground(Theme.BG);
-        root.setBorder(new EmptyBorder(20, 24, 20, 24));
+        root.setBorder(new EmptyBorder(24, 28, 24, 28));
 
         root.add(Theme.h1("Tạo tài khoản"), BorderLayout.NORTH);
 
-        JPanel fields = Theme.transparent(new GridLayout(0, 1, 0, 10));
-        fields.add(Theme.labeledField("TÀI KHOẢN", userField));
-        fields.add(Theme.labeledField("MẬT KHẨU", passField));
-        fields.add(Theme.labeledField("HỌ TÊN", nameField));
-        fields.add(Theme.labeledField("SỐ ĐIỆN THOẠI", phoneField));
-        fields.add(Theme.labeledField("VAI TRÒ", roleBox));
-        fields.add(Theme.labeledField("BIỂN SỐ (CHỈ TÀI XẾ)", plateField));
+        // GridLayout co the co focus issue, dung BoxLayout thay
+        JPanel fields = Theme.transparent(new BorderLayout());
+        JPanel form = new JPanel();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setOpaque(false);
+
+        int H = 54;  // chieu cao cua moi row (field + spacing)
+        addFormRow(form, "TÀI KHOẢN", userField, H);
+        addFormRow(form, "MẬT KHẨU", passField, H);
+        addFormRow(form, "HỌ TÊN", nameField, H);
+        addFormRow(form, "SỐ ĐIỆN THOẠI", phoneField, H);
+        addFormRow(form, "VAI TRÒ", roleBox, H);
+        addFormRow(form, "BIỂN SỐ (CHỈ TÀI XẾ)", plateField, H);
+
+        JScrollPane formScroll = Theme.scroll(form);
+        formScroll.setBorder(null);
+        fields.add(formScroll, BorderLayout.CENTER);
         root.add(fields, BorderLayout.CENTER);
 
         roleBox.setFont(Theme.FONT);
@@ -75,6 +86,14 @@ public class RegisterDialog extends JDialog {
     }
 
     /** Ma vai tro gui len server, tach khoi nhan hien thi tieng Viet. */
+    private void addFormRow(JPanel container, String label, JComponent field, int height) {
+        JPanel row = Theme.transparent(new BorderLayout());
+        row.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
+        row.add(Theme.labeledField(label, field), BorderLayout.CENTER);
+        row.setBorder(new EmptyBorder(0, 0, 10, 0));
+        container.add(row);
+    }
+
     private String selectedRole() {
         return roleBox.getSelectedIndex() == 1 ? "DRIVER" : "CUSTOMER";
     }
@@ -111,14 +130,10 @@ public class RegisterDialog extends JDialog {
             status.setText("Tài xế phải nhập biển số");
             return;
         }
-        if (owner.port() <= 0) {
-            status.setText("Cổng ở màn hình đăng nhập không hợp lệ");
-            return;
-        }
 
         ClientConnection c = new ClientConnection();
         try {
-            c.connect(owner.host(), owner.port());
+            c.connect(Config.host(), Config.port());
         } catch (Exception ex) {
             status.setText("Không kết nối được: " + ex.getMessage());
             return;

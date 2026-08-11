@@ -17,9 +17,9 @@ public class Router {
     private final OrderService orderService;
     private final ChatService chatService;
 
-    public Router(SessionRegistry registry) {
+    public Router(SessionRegistry registry, ActiveTripRegistry activeTrips) {
         this.authService  = new AuthService(registry);
-        this.orderService = new OrderService(registry);
+        this.orderService = new OrderService(registry, activeTrips);
         this.chatService  = new ChatService(registry);
     }
 
