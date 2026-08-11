@@ -1,4 +1,4 @@
-# Delivery App — Level 1 (TCP multi-client + MySQL)
+# Delivery App — Level 1 (TCP multi-client + PostgreSQL)
 
 Đồ án client–server đặt xe/giao hàng. Bản này hoàn thành **toàn bộ Level 1**
 và đã đặt sẵn nền móng cho Level 2 & 3.
@@ -32,14 +32,16 @@ src/main/java/com/delivery/
 ## 2. Chạy
 
 ```bash
-# 1) Tạo database
-mysql -u root -p < db/schema.sql
+# 1) Tạo database (PostgreSQL)
+createdb delivery_app
+psql -d delivery_app -f db/schema-postgres.sql
 
 # 2) Build
 mvn clean package
 
 # 3) Chạy server (sửa thông tin DB bằng biến môi trường nếu cần)
-export DB_USER=root DB_PASS=your_password
+export DB_URL=jdbc:postgresql://localhost:5432/delivery_app
+export DB_USER=postgres DB_PASS=your_password
 java -cp target/delivery-app-1.0.0-jar-with-dependencies.jar com.delivery.server.ServerMain
 
 # 4) Chạy client (mở nhiều cửa sổ để test multi-client)
@@ -69,7 +71,7 @@ java -cp target/delivery-app-1.0.0-jar-with-dependencies.jar com.delivery.client
 | TCP multi-client | `ServerMain` (thread pool) + `ClientHandler` (thread/connection) |
 | Order status | `OrderStatus` state machine, server kiểm tra transition |
 | Chat realtime | `ChatService` + `SessionRegistry.sendTo` |
-| Database | `db/schema.sql` + tầng DAO |
+| Database | `db/schema-postgres.sql` + tầng DAO |
 
 ## 5. Ba chi tiết nên nhấn mạnh khi bảo vệ
 
@@ -90,7 +92,8 @@ UPDATE orders SET driver_id=?, status='ACCEPTED', version=version+1
 WHERE id=? AND status='PENDING' AND driver_id IS NULL
 ```
 
-InnoDB khóa dòng khi update, nên chỉ một transaction thấy `rowsAffected = 1`.
+PostgreSQL khóa dòng khi update, transaction thứ hai phải chờ rồi đọc lại điều kiện,
+thấy `status` đã đổi nên không khớp `WHERE` → `rowsAffected = 0`.
 Cách này vẫn đúng kể cả khi sau này chạy nhiều instance server.
 
 ## 6. Đã chừa sẵn chỗ cho Level 2 & 3
@@ -99,5 +102,6 @@ Cách này vẫn đúng kể cả khi sau này chạy nhiều instance server.
 - Cột `orders.version` → optimistic locking.
 - `messages.type` (`TEXT`/`IMAGE`) → chat có ảnh.
 - `Database` gói riêng → thay bằng HikariCP chỉ sửa 1 file.
+- Còn giữ `db/schema.sql` bản MySQL nếu cần đổi hệ quản trị.
 - `SessionRegistry` → nơi gắn cache "driver đang online" và bộ đẩy vị trí GPS.
 - `PING`/`PONG` đã có sẵn trong protocol → heartbeat & reconnect.
