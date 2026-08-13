@@ -181,3 +181,84 @@ là khung chat cũ y nguyên, thêm tab *Bản đồ*.
 không nhúc nhích thì lỗi ở đường truyền UDP chứ không phải thư viện bản đồ. Sau
 này thay bằng JXMapViewer2 (`org.jxmapviewer:jxmapviewer2:2.8`, tile
 OpenStreetMap, không cần API key) mà không phải động tới phần mạng.
+
+
+---
+
+# Level 3 (đợt 1): Event Queue + Idempotency + Reconnect + Heartbeat + Logging file
+
+## Event Queue
+
+Trước: `OrderService.create` sau khi ghi DB xong tự gọi `registry.broadcast(...)`.
+Nay: nó chỉ `eventBus.publish(new OrderCreatedEvent(o))` rồi return.
+`NotificationListener` nghe event đó và lo phần đẩy PUSH. `AuditListener` cũng nghe
+cùng event để ghi log audit — thêm listener mới không phải sửa OrderService.
+
+```
+publish  ─→  BlockingQueue  ─→  N worker  ─→  NotificationListener
+                                           └─  AuditListener
+                                           └─  (Analytics, Metrics, ... — thêm ở đây)
+```
+
+- Queue có giới hạn 10.000 event, đầy thì bỏ và log cảnh báo (mất thông báo còn
+  hơn treo request).
+- Listener nem exception không làm chết worker và không ảnh hưởng listener khác.
+- Đây là in-process (không phải Kafka). Với đồ án là đủ; sau này thay bằng broker
+  chỉ phải sửa nội bộ `EventBus`.
+
+## Idempotency (chống retry tạo đơn trùng)
+
+Khi retry (client), server (`Router`) kiểm `requestId`:
+- Đã xử lý → trả lại response cũ, không chạy lại logic.
+- Chưa → xử lý, ghi vào `IdempotencyCache`.
+
+Chỉ áp dụng cho lệnh **ghi** thực sự (`ORDER_CREATE`, `CHAT_SEND`). Các lệnh còn
+lại vốn đã idempotent nhờ điều kiện trong SQL: `ORDER_ACCEPT` retry lần 2 sẽ trả
+`ORDER_ALREADY_TAKEN` (điều kiện `AND status='PENDING'`), `ORDER_UPDATE_STATUS`
+retry sẽ trả "trạng thái đã đổi" (`AND status=?`).
+
+Cách chặn ở tầng Router: wrap `ClientSession` bằng `RecordingClientSession`, bắt
+lại response đầu tiên, các PUSH sau đó không bị cache.
+
+## Heartbeat + reconnect
+
+**Client** (`ClientConnection`):
+- PING mỗi 20 giây.
+- Mất kết nối → không báo lỗi UI ngay. Reconnect với exponential backoff
+  (1s → 2s → 4s → 8s, trần 30s). Đăng nhập lại tự động bằng credentials nhớ tạm.
+- Sau 3 lần thất bại mới gọi `onDisconnect` để header hiện đỏ.
+- Khi nối lại: gọi `onReconnected` để UI làm mới danh sách.
+
+**Server** (`ClientHandler`): đặt `soTimeout` 60 giây trên socket. Không nhận gì
+trong 60s (3 chu kỳ PING liên tiếp bị mất) → coi là zombie, đóng.
+
+Kịch bản demo: đang chạy client, `Ctrl+C` server, đợi 3 giây rồi bật lại server
+— header client chuyển "Đang thử lại (lần 2)..." rồi "Đã nối lại", không cần
+đăng nhập lại.
+
+## Logging file
+
+`Log` giờ ghi song song ra `logs/server-YYYY-MM-DD.log`, rolling theo ngày.
+Thêm tham số `tag` và `requestId` để trace một yêu cầu xuyên suốt các service:
+
+```
+21:33:14.005 [INFO ] [main            ] [Order         ] [req=abc12345] Da tao don #17
+21:33:14.006 [INFO ] [event-worker-1  ] [Notify        ] [req=abc12345] Bao don #17 cho 2 tai xe
+21:33:14.007 [INFO ] [event-worker-2  ] [Audit         ] [req=abc12345] ORDER_CREATED id=17 customer=3
+```
+
+Nhìn `req=abc12345` là trace được toàn bộ vòng đời của request. Không cần
+Logback/SLF4J — 100 dòng code Java, đủ cho quy mô đồ án.
+
+## Tổng kết Level 3 đợt 1
+
+| Yêu cầu đề bài | Trạng thái | Ở đâu |
+|---|---|---|
+| Cache | ✓ (từ L2) | `LocationCache`, `ActiveTripRegistry`, `SessionRegistry` |
+| Queue / Event | ✓ | `event/`, `listener/` |
+| Chống race | ✓ (từ L1) | `OrderDao.tryAccept` — UPDATE có điều kiện |
+| Retry / reconnect khi mất mạng | ✓ | `ClientConnection` + `ClientHandler` heartbeat |
+| Idempotency | ✓ (bổ trợ retry) | `IdempotencyCache`, `Router` |
+| Logging | ✓ | `Log` — rolling file + tag + requestId |
+| Tách service | Sắp | LocationService là ứng viên tách ra process riêng |
+| AI support | Sắp | Sau khi chốt hướng với thầy |

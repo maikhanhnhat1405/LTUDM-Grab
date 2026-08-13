@@ -57,9 +57,14 @@ public class HeaderBar extends JPanel {
     }
 
     public void setConnected(boolean ok) {
+        setStatus(ok, ok ? "Đã kết nối" : "Mất kết nối");
+    }
+
+    /** Cho phep set text tuy y - dung cho trang thai "Dang thu lai (lan 3)...". */
+    public void setStatus(boolean ok, String text) {
         dot.ok = ok;
         dot.repaint();
-        connText.setText(ok ? "Đã kết nối" : "Mất kết nối");
+        connText.setText(text);
         connText.setForeground(ok ? new Color(0xB8D8C6) : new Color(0xFFB4AE));
     }
 

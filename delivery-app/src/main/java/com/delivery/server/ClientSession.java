@@ -16,15 +16,23 @@ import java.net.Socket;
  */
 public class ClientSession {
 
-    private final Socket socket;
-    private final DataInputStream in;
-    private final DataOutputStream out;
+    private Socket socket;                    // null neu la RecordingClientSession
+    private DataInputStream in;
+    private DataOutputStream out;
+
 
     // Gan sau khi dang nhap thanh cong
     private volatile long userId = -1;
     private volatile String fullName;
     private volatile Role role;
     private volatile long udpToken;   // cap luc dang nhap, dung xac thuc goi UDP
+
+    /** Chi dung noi bo package (RecordingClientSession) - khong tao socket. */
+    protected ClientSession() {
+        this.socket = null;
+        this.in = null;
+        this.out = null;
+    }
 
     public ClientSession(Socket socket) throws IOException {
         this.socket = socket;
@@ -33,6 +41,13 @@ public class ClientSession {
     }
 
     public DataInputStream in() { return in; }
+
+    /** Duoi hn ms khong nghe gi thi Protocol.readMessage se nem SocketTimeoutException. */
+    public void setReadTimeout(int ms) {
+        try {
+            if (socket != null) socket.setSoTimeout(ms);
+        } catch (java.net.SocketException ignored) {}
+    }
 
     public void send(Message msg) {
         try {

@@ -2,6 +2,12 @@ package com.delivery.server;
 
 import com.delivery.common.Log;
 import com.delivery.server.db.Database;
+import com.delivery.server.event.EventBus;
+import com.delivery.server.event.OrderAcceptedEvent;
+import com.delivery.server.event.OrderCreatedEvent;
+import com.delivery.server.event.OrderStatusChangedEvent;
+import com.delivery.server.listener.AuditListener;
+import com.delivery.server.listener.NotificationListener;
 import com.delivery.server.service.LocationService;
 
 import java.io.IOException;
@@ -40,7 +46,20 @@ public class ServerMain {
         SessionRegistry registry = new SessionRegistry();
         ActiveTripRegistry activeTrips = new ActiveTripRegistry();
         LocationCache locationCache = new LocationCache();
-        Router router = new Router(registry, activeTrips);
+
+        // EventBus + dang ky 2 listener minh hoa: notify (day PUSH) va audit (log).
+        // Them listener moi khong dong den OrderService - do la loi ich chinh cua EventBus.
+        EventBus eventBus = new EventBus(4);
+        NotificationListener notify = new NotificationListener(registry);
+        AuditListener audit = new AuditListener();
+        eventBus.subscribe(OrderCreatedEvent.class, notify::onOrderCreated);
+        eventBus.subscribe(OrderCreatedEvent.class, audit::onOrderCreated);
+        eventBus.subscribe(OrderAcceptedEvent.class, notify::onOrderAccepted);
+        eventBus.subscribe(OrderAcceptedEvent.class, audit::onOrderAccepted);
+        eventBus.subscribe(OrderStatusChangedEvent.class, notify::onOrderStatusChanged);
+        eventBus.subscribe(OrderStatusChangedEvent.class, audit::onOrderStatusChanged);
+
+        Router router = new Router(registry, activeTrips, eventBus);
 
         // UDP chay tren cong rieng (5001), thread rieng, doc lap voi TCP
         LocationService locationService = new LocationService(registry, locationCache, activeTrips);
@@ -51,10 +70,12 @@ public class ServerMain {
         ExecutorService pool = Executors.newFixedThreadPool(200);
 
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            Log.info("TCP server dang lang nghe tai cong " + port);
+            Log.info("Boot", null, "TCP server dang lang nghe tai cong " + port);
 
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-                Log.info("Dang tat server...");
+                Log.info("Boot", null, "Dang tat server...");
+                eventBus.shutdown();
+                udpServer.stop();
                 pool.shutdownNow();
             }));
 

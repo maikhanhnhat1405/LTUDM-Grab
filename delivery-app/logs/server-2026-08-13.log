@@ -1,0 +1,13 @@
+15:34:44.825 [INFO ] [main          ] Ket noi database OK: jdbc:postgresql://localhost:5432/delivery_app
+15:34:44.829 [INFO ] [main          ] [EventBus      ] Da khoi dong 4 worker
+15:34:44.843 [INFO ] [main          ] UDP GPS dang lang nghe tai cong 5001
+15:35:10.029 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:16.235 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:19.642 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:20.231 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:20.390 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:20.545 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:20.682 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:36.787 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:35:55.415 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed
+15:36:47.128 [WARN ] [conn-reader   ] [Conn          ] Mat ket noi: Socket closed

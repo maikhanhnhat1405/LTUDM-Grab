@@ -6,6 +6,10 @@ import com.delivery.common.MessageType;
 import com.delivery.server.ActiveTripRegistry;
 import com.delivery.server.ClientSession;
 import com.delivery.server.SessionRegistry;
+import com.delivery.server.event.EventBus;
+import com.delivery.server.event.OrderAcceptedEvent;
+import com.delivery.server.event.OrderCreatedEvent;
+import com.delivery.server.event.OrderStatusChangedEvent;
 import com.delivery.server.db.OrderDao;
 import com.delivery.server.model.Order;
 import com.delivery.server.model.OrderStatus;
@@ -18,13 +22,14 @@ import java.util.List;
 public class OrderService {
 
     private final OrderDao orderDao = new OrderDao();
-    private final SessionRegistry registry;
-
+    private final SessionRegistry registry;   // van giu lai cho listPending/listMine
     private final ActiveTripRegistry activeTrips;
+    private final EventBus eventBus;
 
-    public OrderService(SessionRegistry registry, ActiveTripRegistry activeTrips) {
+    public OrderService(SessionRegistry registry, ActiveTripRegistry activeTrips, EventBus eventBus) {
         this.registry = registry;
         this.activeTrips = activeTrips;
+        this.eventBus = eventBus;
     }
 
     // ---------------- Customer tao don ----------------
@@ -52,15 +57,16 @@ public class OrderService {
         }
         try {
             o.id = orderDao.create(o);
-            Log.info("Don moi #" + o.id + " tu customer " + s.userId());
+            Log.info("Order", req.getRequestId(), "Da tao don #" + o.id + " tu customer " + s.userId());
 
             // 1. Tra ve cho nguoi tao
             s.send(Message.ok(req.getRequestId()).put("order", o.toJson()));
 
-            // 2. PUSH cho toan bo driver dang online -> day la "realtime"
-            int n = registry.broadcastToRole(Role.DRIVER,
-                    Message.push(MessageType.PUSH_NEW_ORDER).put("order", o.toJson()));
-            Log.info("Da bao don #" + o.id + " cho " + n + " driver online");
+            // 2. Publish event - NotificationListener se lo phan day PUSH cho driver.
+            //    Uu diem: OrderService khong con biet gi ve "phai bao ai".
+            OrderCreatedEvent ev = new OrderCreatedEvent(o);
+            ev.traceId = req.getRequestId();
+            eventBus.publish(ev);
 
         } catch (SQLException e) {
             Log.error("create order", e);
@@ -139,6 +145,7 @@ public class OrderService {
                         "Khong the chuyen " + o.status + " -> " + next));
                 return;
             }
+            OrderStatus prev = o.status;
             if (!orderDao.updateStatus(orderId, o.status, next)) {
                 s.send(Message.error(req.getRequestId(), MessageType.ERR_INVALID_STATUS,
                         "Trang thai da bi thay doi, thu lai"));
@@ -149,15 +156,15 @@ public class OrderService {
             if ((next == OrderStatus.COMPLETED || next == OrderStatus.CANCELLED) && o.driverId != null) {
                 activeTrips.end(o.driverId);
             }
-            Log.info("Don #" + orderId + " -> " + next + " boi user " + s.userId());
+            Log.info("Order", req.getRequestId(),
+                    "Don #" + orderId + " " + prev + " -> " + next + " boi user " + s.userId());
 
             s.send(Message.ok(req.getRequestId()).put("order", o.toJson()));
 
-            Long other = o.otherParty(s.userId());
-            if (other != null) {
-                registry.sendTo(other, Message.push(MessageType.PUSH_ORDER_STATUS)
-                        .put("order", o.toJson()));
-            }
+            // Listener se lo phan day PUSH ve doi phuong.
+            OrderStatusChangedEvent ev = new OrderStatusChangedEvent(o, prev, next, s.userId());
+            ev.traceId = req.getRequestId();
+            eventBus.publish(ev);
         } catch (SQLException e) {
             Log.error("update status", e);
             s.send(Message.error(req.getRequestId(), MessageType.ERR_SERVER, "Loi database"));

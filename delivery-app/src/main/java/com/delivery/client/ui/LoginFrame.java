@@ -175,6 +175,7 @@ public class LoginFrame extends JFrame {
                     conn.fullName = u.get("fullName").getAsString();
                     conn.role = u.get("role").getAsString();
                     conn.udpToken = resp.lng("udpToken");
+                    conn.rememberCredentials(username, password);
                     if (resp.getData().has("udpPort")) conn.udpPort = (int) resp.lng("udpPort");
 
                     JFrame next;

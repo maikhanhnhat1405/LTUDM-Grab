@@ -59,7 +59,13 @@ public class DriverFrame extends JFrame {
         conn.setPushListener(this::onPush);
         conn.setOnDisconnect(() -> {
             header.setConnected(false);
-            log("Mất kết nối tới server");
+            log("Mất kết nối tới server, đang tự thử lại...");
+        });
+        conn.setOnConnectionStatus(status -> header.setStatus(false, status));
+        conn.setOnReconnected(() -> {
+            header.setConnected(true);
+            log("Đã nối lại server, đang làm mới dữ liệu...");
+            loadPending(); loadMine();
         });
 
         UiKit.onClosing(this, this::exitApp);
